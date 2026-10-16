@@ -11,9 +11,9 @@ export async function connectThroughOwningService(
   switch (host.kind) {
     case 'wsl':
       await getWslHostService()?.connect(environment.id)
-      return
+      break
     case 'network':
-      return
+      break
   }
 }
 
