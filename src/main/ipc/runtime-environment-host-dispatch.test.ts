@@ -138,10 +138,13 @@ beforeEach(() => {
   mocks.order.length = 0
   vi.stubEnv(WSL_HOSTS_INTERNAL_GATE_ENV, '1')
   mocks.wsl.service = {
+    // Why a macrotask: a dropped await would let getStatus run first and reorder the log.
     connect: vi.fn(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0))
       mocks.order.push('wsl.connect')
     }),
     remove: vi.fn(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0))
       mocks.order.push('wsl.remove')
     })
   }

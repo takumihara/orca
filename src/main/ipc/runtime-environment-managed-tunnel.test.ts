@@ -2,8 +2,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => {
   const environments: Record<string, Record<string, unknown>> = {}
+  const reads: Record<string, number> = {}
   return {
     environments,
+    reads,
     ensureForRuntimeCall: vi.fn(async () => {}),
     hasWslService: true,
     ensureTunnel: vi.fn(async () => {}),
@@ -15,8 +17,15 @@ const mocks = vi.hoisted(() => {
 })
 
 vi.mock('../../shared/runtime-environment-store', () => ({
-  resolveEnvironment: (_userData: string, id: string) =>
-    mocks.environments[id] ?? { id, orcadDeployment: { sshTargetId: 'ssh-1' } }
+  resolveEnvironment: (_userData: string, id: string) => {
+    const environment = mocks.environments[id]
+    if (!environment) {
+      return { id, orcadDeployment: { sshTargetId: 'ssh-1' } }
+    }
+    mocks.reads[id] = (mocks.reads[id] ?? 0) + 1
+    // A fresh object per read, so a test can tell the re-read after bring-up from the first.
+    return { ...environment, read: mocks.reads[id] }
+  }
 }))
 vi.mock('../wsl/wsl-host-service-instance', () => ({
   getWslHostService: () =>
@@ -76,6 +85,9 @@ describe('resolving a runtime for a call, by host kind', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mocks.hasWslService = true
+    for (const id of Object.keys(mocks.reads)) {
+      delete mocks.reads[id]
+    }
     mocks.environments = { 'wsl:ubuntu': wsl, 'paired-1': { id: 'paired-1' } }
     mocks.verify.mockResolvedValue({ state: 'serving' })
     vi.stubEnv(WSL_HOSTS_INTERNAL_GATE_ENV, '1')
@@ -83,7 +95,11 @@ describe('resolving a runtime for a call, by host kind', () => {
   afterEach(() => vi.unstubAllEnvs())
 
   it('brings a WSL host up through its service, never through an SSH tunnel', async () => {
-    await expect(resolveManagedRuntimeEnvironment('/u', 'wsl:ubuntu')).resolves.toEqual(wsl)
+    // The record re-read after bring-up, which may have moved the bridge port.
+    await expect(resolveManagedRuntimeEnvironment('/u', 'wsl:ubuntu')).resolves.toEqual({
+      ...wsl,
+      read: 2
+    })
     expect(mocks.ensureForRuntimeCall).toHaveBeenCalledWith('wsl:ubuntu')
     expect(mocks.ensureTunnel).not.toHaveBeenCalled()
     expect(mocks.verify).not.toHaveBeenCalled()
@@ -92,7 +108,10 @@ describe('resolving a runtime for a call, by host kind', () => {
 
   it('resolves a WSL host with no service without bringing anything up', async () => {
     mocks.hasWslService = false
-    await expect(resolveManagedRuntimeEnvironment('/u', 'wsl:ubuntu')).resolves.toEqual(wsl)
+    await expect(resolveManagedRuntimeEnvironment('/u', 'wsl:ubuntu')).resolves.toEqual({
+      ...wsl,
+      read: 2
+    })
     expect(mocks.ensureTunnel).not.toHaveBeenCalled()
   })
 
@@ -106,7 +125,8 @@ describe('resolving a runtime for a call, by host kind', () => {
 
   it('runs the managed tunnel path for a paired server too', async () => {
     await expect(resolveManagedRuntimeEnvironment('/u', 'paired-1')).resolves.toEqual({
-      id: 'paired-1'
+      id: 'paired-1',
+      read: 2
     })
     expect(mocks.ensureTunnel).toHaveBeenCalledWith('/u', 'paired-1')
     expect(mocks.verify).toHaveBeenCalledWith('/u', 'paired-1')

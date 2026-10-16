@@ -7,10 +7,12 @@ import {
 } from '../../shared/runtime-environment-store'
 import {
   redactRuntimeEnvironment,
-  type KnownRuntimeEnvironment,
   type PublicKnownRuntimeEnvironment
 } from '../../shared/runtime-environments'
-import { classifyRuntimeEnvironmentHost } from '../../shared/runtime-environment-host-kind'
+import {
+  connectThroughOwningService,
+  removeThroughOwningService
+} from './runtime-environment-host-service-ops'
 import { RemoteRuntimeClientError } from '../../shared/remote-runtime-client-error'
 import { RuntimeRpcCallQueueOverloadError } from '../../shared/runtime-rpc-call-queue'
 import type { RuntimeRpcFailure, RuntimeRpcResponse } from '../../shared/runtime-rpc-envelope'
@@ -42,7 +44,6 @@ import {
   observeWslOrcadHostResponse,
   wslOrcadHostSupports
 } from '../wsl/wsl-orcad-host-environments'
-import { getWslHostService } from '../wsl/wsl-host-service-instance'
 import { assertWslHostReachable, isGatedOffWslHost } from '../wsl/wsl-host-gate'
 
 function manuallyDisconnectedResponse(
@@ -160,15 +161,7 @@ export function registerRuntimeEnvironmentConnectivityHandlers({
       assertWslHostReachable(environment)
       clearRuntimeEnvironmentManualDisconnect(environment.id)
       clearSshCredentialDeclinedForEnvironment(environment)
-      const host = classifyRuntimeEnvironmentHost(environment)
-      switch (host.kind) {
-        case 'wsl':
-          // An explicit connect may boot the distro.
-          await getWslHostService()?.connect(environment.id)
-          break
-        case 'network':
-          break
-      }
+      await connectThroughOwningService(environment)
       return getRuntimeEnvironmentStatus(getUserDataPath(), environment.id, args.timeoutMs, {
         reconnect: true
       })
@@ -183,18 +176,6 @@ export function registerRuntimeEnvironmentConnectivityHandlers({
       }
     }
   )
-}
-
-/** Null when no service owns the host, which leaves removal to the generic store path. */
-function removeThroughOwningService(environment: KnownRuntimeEnvironment): Promise<unknown> | null {
-  const host = classifyRuntimeEnvironmentHost(environment)
-  switch (host.kind) {
-    case 'wsl':
-      // Also releases the distro's holder and drops the WSL record.
-      return getWslHostService()?.remove(environment.id) ?? null
-    case 'network':
-      return null
-  }
 }
 
 export function registerRuntimeEnvironmentPassiveHandlers(getUserDataPath: () => string): void {
