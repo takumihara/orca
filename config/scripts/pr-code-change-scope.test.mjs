@@ -41,10 +41,8 @@ function expectedJobs(overrides, { alwaysOn = true } = {}) {
 }
 
 function expectClassification(files, overrides) {
-  const result = classifyPrJobs(files)
   const shouldRun = shouldRunPrChecks(files)
-  expect(result.should_run).toBe(shouldRun)
-  expect(result).toMatchObject({
+  expect(classifyPrJobs(files)).toMatchObject({
     should_run: shouldRun,
     ...expectedJobs(overrides, { alwaysOn: shouldRun })
   })
@@ -615,9 +613,11 @@ describe('PR Checks skip wiring', () => {
     expect(installStep.run).toContain('--frozen-lockfile')
   })
 
-  it('keeps the root and README guards on docs-only PRs without another runner', () => {
+  it('keeps the root and README guards on ready docs-only PRs without another runner', () => {
     const detector = prWorkflow.jobs.code_paths
-    expect(detector.if).toBeUndefined()
+    expect(detector.if).toBe(
+      "github.event_name != 'pull_request' || github.event.pull_request.draft != true"
+    )
     expect(detector.needs).toBeUndefined()
     for (const name of ['Reject new root-level files and folders', 'Check README local links']) {
       const step = detector.steps.find((candidate) => candidate.name === name)

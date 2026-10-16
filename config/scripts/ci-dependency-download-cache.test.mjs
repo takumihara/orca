@@ -348,7 +348,9 @@ describe('CI dependency download caches', () => {
     const context = { github: { event_name: event } }
     expect(runInNewContext(platforms.jobs['warm-linux-runtime'].if, context)).toBe(armRuns)
     expect(runInNewContext(shared.jobs['warm-platforms'].if, context)).toBe(sharedPlatforms)
-    expect(shared.jobs.warm.if).toBeUndefined()
+    expect(shared.jobs.warm.if).toBe(
+      "github.event_name != 'pull_request' || github.event.pull_request.draft != true"
+    )
     expect(platforms.jobs['warm-windows'].if).toBeUndefined()
     expect(platforms.jobs['warm-windows'].strategy.matrix.os).toEqual([
       'windows-2022',

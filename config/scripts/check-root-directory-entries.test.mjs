@@ -237,7 +237,9 @@ describe('root directory guard', () => {
       (step) => step.name === 'Reject new root-level files and folders'
     )
 
-    expect(guardJob.if).toBeUndefined()
+    expect(guardJob.if).toBe(
+      "github.event_name != 'pull_request' || github.event.pull_request.draft != true"
+    )
     expect(guardStep.if).toBeUndefined()
     // Why >= 2 rather than 0: the guard compares the merge commit's first parent against the
     // merged tree, so it needs both parents present but no history beyond them. Depth 1 would
