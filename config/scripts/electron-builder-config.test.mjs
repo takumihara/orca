@@ -175,7 +175,8 @@ describe('electron-builder config', () => {
       'out/electron-dev/1a2b3c4d5e6f/Orca: dev.app/Contents/MacOS/Electron',
       'out/electron-dev/1a2b3c4d5e6f/orca-dev-electron-app.json',
       '.cache/vite/renderer/deps/react.js',
-      '.cache/vite/web/deps/react.js'
+      '.cache/vite/web/deps/react.js',
+      '.cache/vite.lock/owner'
     ]) {
       expect(packs(devBundlePath)).toBe(false)
     }
