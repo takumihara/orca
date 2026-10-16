@@ -67,6 +67,7 @@ desktop.ini
 
 # Lint/cache
 .oxlintcache
+/.cache/vite/
 
 # Logs
 *.log

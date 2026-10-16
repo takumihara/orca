@@ -288,6 +288,8 @@ export const electronViteConfig: UserConfig = {
     }
   },
   renderer: {
+    // Shared node_modules installs must not share dependency optimization state across worktrees.
+    cacheDir: resolve('.cache/vite/renderer'),
     define: {
       ORCA_BUILD_COMMIT: ORCA_BUILD_COMMIT_LITERAL,
       ORCA_LAYOUT_OWNER: ORCA_LAYOUT_OWNER_LITERAL
@@ -305,6 +307,7 @@ export const electronViteConfig: UserConfig = {
     },
     build: {
       manifest: true,
+      reportCompressedSize: false,
       modulePreload: { polyfill: true },
       minify: 'oxc',
       target: 'es2020',
@@ -327,4 +330,16 @@ export const electronViteConfig: UserConfig = {
   }
 }
 
-export default defineConfig(electronViteConfig)
+export default defineConfig(({ command }) => {
+  if (command === 'build') {
+    return electronViteConfig
+  }
+  // Electron Vite also uses Vite's build command for the development main process.
+  return {
+    ...electronViteConfig,
+    main: {
+      ...electronViteConfig.main,
+      build: { ...electronViteConfig.main?.build, minify: false }
+    }
+  }
+})

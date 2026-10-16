@@ -344,7 +344,7 @@ describe('External process-host development rebuilds', () => {
     if (typeof buildStart !== 'function') {
       throw new Error('The process-host rebuild plugin must have a buildStart hook')
     }
-    rebuildPlugin.buildStart = function (...args) {
+    rebuildPlugin.buildStart = async function (...args) {
       const addWatchFile = this.addWatchFile.bind(this)
       const registration = vi.spyOn(this, 'addWatchFile').mockImplementation((file) => {
         addWatchFile(file)
@@ -353,7 +353,7 @@ describe('External process-host development rebuilds', () => {
         }
       })
       try {
-        return buildStart.apply(this, args)
+        return await buildStart.apply(this, args)
       } finally {
         registration.mockRestore()
       }

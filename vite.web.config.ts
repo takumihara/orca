@@ -8,6 +8,7 @@ import { resolveBuildSourceCommit } from './config/scripts/build-source-commit.m
 
 export default defineConfig({
   root: resolve('src/renderer'),
+  cacheDir: resolve('.cache/vite/web'),
   // Why: pairing URLs may live under a reverse-proxy path prefix like
   // /orca/web-index.html, so built assets must resolve relative to the page.
   base: './',
@@ -26,6 +27,7 @@ export default defineConfig({
   build: {
     outDir: resolve('out/web'),
     emptyOutDir: true,
+    reportCompressedSize: false,
     rollupOptions: {
       input: resolve('src/renderer/web-index.html')
     }
