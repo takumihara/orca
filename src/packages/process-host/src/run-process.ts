@@ -5,6 +5,7 @@ import {
 } from 'node:child_process'
 import { resolveSpawn, type ResolvedSpawn } from './spawn-resolution'
 import { forceTerminateProcessTree, signalProcessTree } from './process-tree-termination'
+import { inFlightWindowsTreeKill } from './windows-tree-kill'
 
 import { hasSpawnObserver, notifySpawnObserver } from './spawn-observer'
 import { createOutputSink } from './bounded-output-sink'
@@ -171,6 +172,20 @@ export function runProcess(
       resolveFromClose(rootExit?.code ?? null, rootExit?.signal ?? null)
     }
 
+    const markBarrierTerminationVerified = (): void => {
+      barrierAttemptComplete = true
+      barrierTerminationVerified = true
+      terminationReporter.report()
+      resolveBarrierIfSafe()
+    }
+    // A root killed before taskkill reads the tree orphans the descendants it
+    // has not reached, so an in-flight taskkill owns that fallback.
+    const killRootUnlessTreeKillInFlight = (): void => {
+      if (!inFlightWindowsTreeKill(child)) {
+        terminate(child, 'SIGKILL')
+      }
+    }
+
     const resolveBarrierIfSafe = (): void => {
       const rootExit = deferredClose ?? deferredExit
       if (barrierTerminationVerified || (rootExitedBeforeBarrier && rootExit)) {
@@ -199,15 +214,13 @@ export function runProcess(
         barrierStopping = true
         initialBarrierTermination ??= signalBarrierTree()
         if (process.platform === 'win32') {
-          void initialBarrierTermination.then((terminated) => {
-            if (!terminated) {
-              return
-            }
-            barrierAttemptComplete = true
-            barrierTerminationVerified = true
-            terminationReporter.report()
-            resolveBarrierIfSafe()
-          })
+          // The tracked taskkill outlives the caller's wait; a late success still verifies.
+          void inFlightWindowsTreeKill(child)?.then(
+            (verdict) => verdict === 'exited' && markBarrierTerminationVerified()
+          )
+          void initialBarrierTermination.then(
+            (terminated) => terminated && markBarrierTerminationVerified()
+          )
         }
       } else {
         terminate(child)
@@ -225,7 +238,7 @@ export function runProcess(
                   if (!barrierTerminationVerified) {
                     // The barrier never confirmed the tree died, so the root
                     // would otherwise outlive the abort or timeout.
-                    terminate(child, 'SIGKILL')
+                    killRootUnlessTreeKillInFlight()
                   }
                   resolveBarrierIfSafe()
                 }
@@ -234,7 +247,7 @@ export function runProcess(
             }
             void initialTermination.then((terminated) => {
               if (!terminated) {
-                terminate(child, 'SIGKILL')
+                killRootUnlessTreeKillInFlight()
               }
               barrierAttemptComplete = true
               barrierTerminationVerified = terminated
@@ -301,7 +314,13 @@ export function runProcess(
       }
     })
     child.once('close', (code, signal) => {
-      terminationReporter.report()
+      // Root pipes closing is not proof for descendants a taskkill is still walking.
+      const inFlightTreeKill = inFlightWindowsTreeKill(child)
+      if (inFlightTreeKill) {
+        void inFlightTreeKill.then(terminationReporter.report)
+      } else {
+        terminationReporter.report()
+      }
       if (!barrierStopping) {
         rootExitedBeforeBarrier = true
       }
