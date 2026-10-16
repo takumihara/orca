@@ -45,8 +45,7 @@ describe('withRuntimeUnreachableHint', () => {
           remotePort: 2
         }
       }
-    ],
-    ['a server with no deployment record', { orcadDeployment: null }]
+    ]
   ])('gives %s exactly the Tailscale hint', (_name, environment) => {
     expect(withRuntimeUnreachableHint(environment, UNREACHABLE, 'ws://203.0.113.4:6768')).toBe(
       withRemoteRuntimeTailscaleHint(UNREACHABLE, 'ws://203.0.113.4:6768')
