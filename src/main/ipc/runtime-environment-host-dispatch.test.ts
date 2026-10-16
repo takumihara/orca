@@ -1,17 +1,23 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 // Pins what connect and remove do for each kind of host, so host-kind dispatch stays exhaustive.
-const mocks = vi.hoisted(() => ({
-  order: [] as string[],
-  handle: vi.fn(),
-  resolveEnvironment: vi.fn(),
-  removeEnvironment: vi.fn(),
-  retire: vi.fn(),
-  closeRequest: vi.fn(),
-  getStatus: vi.fn(),
-  clearDecline: vi.fn(),
-  service: null as null | { connect: ReturnType<typeof vi.fn>; remove: ReturnType<typeof vi.fn> }
-}))
+type WslServiceFake = { connect: ReturnType<typeof vi.fn>; remove: ReturnType<typeof vi.fn> }
+
+const mocks = vi.hoisted(() => {
+  const order: string[] = []
+  const wsl: { service: WslServiceFake | null } = { service: null }
+  return {
+    order,
+    handle: vi.fn(),
+    resolveEnvironment: vi.fn(),
+    removeEnvironment: vi.fn(),
+    retire: vi.fn(),
+    closeRequest: vi.fn(),
+    getStatus: vi.fn(),
+    clearDecline: vi.fn(),
+    wsl
+  }
+})
 
 vi.mock('electron', () => ({ ipcMain: { handle: mocks.handle } }))
 vi.mock('../../shared/runtime-environment-store', () => ({
@@ -34,7 +40,7 @@ vi.mock('./runtime-environment-transport-routing', () => ({
 vi.mock('../ssh/ssh-credential-decline', () => ({
   clearSshCredentialDeclinedForEnvironment: mocks.clearDecline
 }))
-vi.mock('../wsl/wsl-host-service-instance', () => ({ getWslHostService: () => mocks.service }))
+vi.mock('../wsl/wsl-host-service-instance', () => ({ getWslHostService: () => mocks.wsl.service }))
 
 import { registerRuntimeEnvironmentConnectivityHandlers } from './runtime-environment-connectivity-handlers'
 import { WSL_HOSTS_GATED_OFF_MESSAGE } from '../wsl/wsl-host-gate'
@@ -131,7 +137,7 @@ beforeEach(() => {
   vi.clearAllMocks()
   mocks.order.length = 0
   vi.stubEnv(WSL_HOSTS_INTERNAL_GATE_ENV, '1')
-  mocks.service = {
+  mocks.wsl.service = {
     connect: vi.fn(async () => {
       mocks.order.push('wsl.connect')
     }),
@@ -155,14 +161,14 @@ describe('runtimeEnvironments:connect by host kind', () => {
   it('connects a WSL host through its service before asking for status', async () => {
     useHost('wsl')
     await handler('runtimeEnvironments:connect')(null, { selector: 'wsl:ubuntu', timeoutMs: 5 })
-    expect(mocks.service!.connect).toHaveBeenCalledWith('wsl:ubuntu')
+    expect(mocks.wsl.service!.connect).toHaveBeenCalledWith('wsl:ubuntu')
     expect(mocks.order).toEqual(['clearDecline', 'wsl.connect', 'getStatus'])
     expect(mocks.getStatus).toHaveBeenCalledWith('/u', 'wsl:ubuntu', 5, { reconnect: true })
   })
 
   it('still asks a WSL host for status when no service exists', async () => {
     useHost('wsl')
-    mocks.service = null
+    mocks.wsl.service = null
     await handler('runtimeEnvironments:connect')(null, { selector: 'wsl:ubuntu' })
     expect(mocks.order).toEqual(['clearDecline', 'getStatus'])
   })
@@ -179,7 +185,7 @@ describe('runtimeEnvironments:connect by host kind', () => {
   it.each(NETWORK_HOSTS)('only asks a %s host for status', async (name) => {
     useHost(name)
     await handler('runtimeEnvironments:connect')(null, { selector: HOSTS[name].id })
-    expect(mocks.service!.connect).not.toHaveBeenCalled()
+    expect(mocks.wsl.service!.connect).not.toHaveBeenCalled()
     expect(mocks.clearDecline).toHaveBeenCalledWith(HOSTS[name])
     expect(mocks.order).toEqual(['clearDecline', 'getStatus'])
   })
@@ -191,14 +197,14 @@ describe('runtimeEnvironments:remove by host kind', () => {
     const result = handler('runtimeEnvironments:remove')(null, { selector: 'wsl:ubuntu' })
     expect(result).toBeInstanceOf(Promise)
     await expect(result).resolves.toEqual({ removed: redacted('wsl') })
-    expect(mocks.service!.remove).toHaveBeenCalledWith('wsl:ubuntu')
+    expect(mocks.wsl.service!.remove).toHaveBeenCalledWith('wsl:ubuntu')
     expect(mocks.removeEnvironment).not.toHaveBeenCalled()
     expect(mocks.retire).not.toHaveBeenCalled()
   })
 
   it('removes a WSL host generically when no service exists', () => {
     useHost('wsl')
-    mocks.service = null
+    mocks.wsl.service = null
     expect(handler('runtimeEnvironments:remove')(null, { selector: 'Ubuntu (WSL)' })).toEqual({
       removed: redacted('wsl')
     })
@@ -212,7 +218,7 @@ describe('runtimeEnvironments:remove by host kind', () => {
     expect(() => handler('runtimeEnvironments:remove')(null, { selector: 'wsl:ubuntu' })).toThrow(
       WSL_HOSTS_GATED_OFF_MESSAGE
     )
-    expect(mocks.service!.remove).not.toHaveBeenCalled()
+    expect(mocks.wsl.service!.remove).not.toHaveBeenCalled()
     expect(mocks.removeEnvironment).not.toHaveBeenCalled()
   })
 
@@ -232,7 +238,7 @@ describe('runtimeEnvironments:remove by host kind', () => {
     expect(handler('runtimeEnvironments:remove')(null, { selector: id })).toEqual({
       removed: redacted(name)
     })
-    expect(mocks.service!.remove).not.toHaveBeenCalled()
+    expect(mocks.wsl.service!.remove).not.toHaveBeenCalled()
     expect(mocks.removeEnvironment).toHaveBeenCalledWith('/u', id)
     expect(mocks.retire).toHaveBeenCalledWith(id, expect.any(Function), expect.anything())
     // Removed by its own id, so no legacy-selector transport is closed.

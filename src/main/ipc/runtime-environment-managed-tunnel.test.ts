@@ -1,15 +1,18 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-const mocks = vi.hoisted(() => ({
-  environments: {} as Record<string, Record<string, unknown>>,
-  ensureForRuntimeCall: vi.fn(async () => {}),
-  hasWslService: true,
-  ensureTunnel: vi.fn(async () => {}),
-  rebuildTunnel: vi.fn(async () => {}),
-  verify: vi.fn(),
-  restoreUpdate: vi.fn(() => null),
-  redeploy: vi.fn(async () => true)
-}))
+const mocks = vi.hoisted(() => {
+  const environments: Record<string, Record<string, unknown>> = {}
+  return {
+    environments,
+    ensureForRuntimeCall: vi.fn(async () => {}),
+    hasWslService: true,
+    ensureTunnel: vi.fn(async () => {}),
+    rebuildTunnel: vi.fn(async () => {}),
+    verify: vi.fn(),
+    restoreUpdate: vi.fn(() => null),
+    redeploy: vi.fn(async () => true)
+  }
+})
 
 vi.mock('../../shared/runtime-environment-store', () => ({
   resolveEnvironment: (_userData: string, id: string) =>
